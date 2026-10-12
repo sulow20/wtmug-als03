@@ -1,0 +1,21 @@
+{
+  "id": "./",
+  "name": "Hava Durumu",
+  "short_name": "Hava Durumu",
+  "description": "Güncel hava durumu ve 7 günlük tahmin",
+  "lang": "tr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#edf4ff",
+  "theme_color": "#1976d2",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,476 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1976d2">
+<meta name="description" content="Ücretsiz hava durumu ve 7 günlük tahmin">
+<title>Hava Durumu</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+
+<style>
+:root {
+  --bg:#edf4ff; --card:#fff; --text:#18253b;
+  --muted:#64748b; --accent:#1976d2; --border:#d8e2f0;
+}
+:root[data-theme="dark"] {
+  color-scheme:dark;
+  --bg:#101827; --card:#1d293b; --text:#f1f5f9;
+  --muted:#aab8cc; --accent:#60a5fa; --border:#35445b;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; padding:20px 14px;
+  padding-top:max(20px,env(safe-area-inset-top));
+  padding-bottom:max(20px,env(safe-area-inset-bottom));
+  font-family:system-ui,sans-serif;
+  background:var(--bg); color:var(--text);
+}
+.app { max-width:700px; margin:auto; }
+header { display:flex; justify-content:space-between; align-items:center; }
+h1 { font-size:25px; margin:0; }
+h2 { font-size:18px; }
+.muted { color:var(--muted); }
+button,input { font:inherit; min-height:46px; border-radius:12px; }
+button {
+  padding:10px 14px; border:0; background:var(--accent);
+  color:white; font-weight:650; cursor:pointer;
+}
+button:disabled { opacity:.5; }
+.secondary {
+  background:var(--card); color:var(--text);
+  border:1px solid var(--border);
+}
+input {
+  width:100%; padding:12px; color:var(--text);
+  background:var(--card); border:1px solid var(--border);
+}
+.search { display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:12px; }
+.actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:20px; padding:18px; margin-top:16px;
+}
+.notice {
+  display:none; padding:12px; margin-top:12px;
+  border-radius:12px; background:#ffedc2; color:#754500;
+}
+.notice.show { display:block; }
+.city-result {
+  width:100%; text-align:left; margin-top:7px;
+  display:flex; justify-content:space-between; gap:8px;
+}
+.current { display:flex; justify-content:space-between; align-items:center; }
+.city { font-size:22px; font-weight:750; }
+.icon { font-size:52px; }
+.temp { font-size:68px; font-weight:750; letter-spacing:-3px; margin:8px 0; }
+.metrics { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:18px; }
+.metric { padding:13px; border:1px solid var(--border); border-radius:14px; }
+.metric strong { display:block; font-size:21px; margin-top:5px; }
+.day {
+  display:grid; grid-template-columns:1fr 40px auto;
+  gap:8px; align-items:center; padding:12px 0;
+  border-bottom:1px solid var(--border);
+}
+.day:last-child { border-bottom:0; }
+.day-icon { font-size:26px; text-align:center; }
+.day-name { font-weight:700; font-size:14px; }
+.day-desc { color:var(--muted); font-size:12px; }
+.temps { white-space:nowrap; font-weight:700; }
+.min { color:var(--muted); margin-left:6px; font-weight:400; }
+.small { font-size:12px; }
+.hidden { display:none!important; }
+footer { color:var(--muted); font-size:12px; margin-top:18px; }
+@media(max-width:360px) {
+  .search { grid-template-columns:1fr; }
+  .card { padding:13px; }
+  .day { grid-template-columns:1fr 30px auto; gap:4px; }
+  .temps { font-size:13px; }
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+<header>
+  <div>
+    <h1>🌤️ Hava Durumu</h1>
+    <div class="muted small">Anlık durum ve 7 günlük tahmin</div>
+  </div>
+  <button id="theme" class="secondary" aria-label="Temayı değiştir">🌙</button>
+</header>
+
+<form id="searchForm">
+  <label for="city">Şehir ara</label>
+  <div class="search">
+    <input id="city" placeholder="İstanbul, Ankara, Tokat..." required minlength="2">
+    <button id="searchBtn">Ara</button>
+  </div>
+</form>
+
+<div class="actions">
+  <button id="gps" class="secondary" type="button">📍 Konumumu kullan</button>
+  <button id="install" class="secondary hidden" type="button">Uygulamayı yükle</button>
+</div>
+
+<div id="results"></div>
+<div id="offline" class="notice" role="status">
+  İnternet bağlantısı yok. Yeni hava durumu alınamıyor.
+  Daha önce kaydedilen veriler gösterilebilir.
+</div>
+<div id="error" class="notice" role="alert"></div>
+
+<main id="weather" class="hidden">
+  <section class="card">
+    <div class="current">
+      <div>
+        <div id="place" class="city">—</div>
+        <div id="localTime" class="muted small"></div>
+      </div>
+      <div id="weatherIcon" class="icon">🌤️</div>
+    </div>
+    <div id="temperature" class="temp">—°C</div>
+    <div id="description">—</div>
+    <p id="feels" class="muted">Hissedilen: —</p>
+
+    <div class="metrics">
+      <div class="metric">💧 Nem<strong id="humidity">—%</strong></div>
+      <div class="metric">💨 Rüzgâr<strong id="wind">— km/sa</strong></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>📅 7 Günlük Tahmin</h2>
+    <div id="forecast"></div>
+  </section>
+
+  <footer id="updated">Son güncelleme: —</footer>
+  <footer>Veri kaynağı: Open-Meteo</footer>
+</main>
+</div>
+
+<script>
+"use strict";
+
+const $ = id => document.getElementById(id);
+const CACHE = "weather-data-v1";
+let requestNumber = 0;
+let installEvent = null;
+
+const codes = {
+  0:["Açık","☀️"],1:["Çoğunlukla açık","🌤️"],
+  2:["Parçalı bulutlu","⛅"],3:["Kapalı","☁️"],
+  45:["Sisli","🌫️"],48:["Kırağılı sis","🌫️"],
+  51:["Hafif çisenti","🌦️"],53:["Çisenti","🌦️"],
+  55:["Yoğun çisenti","🌧️"],56:["Dondurucu çisenti","🌧️"],
+  57:["Yoğun dondurucu çisenti","🌧️"],
+  61:["Hafif yağmur","🌧️"],63:["Yağmur","🌧️"],
+  65:["Kuvvetli yağmur","🌧️"],66:["Dondurucu yağmur","🌧️"],
+  67:["Kuvvetli dondurucu yağmur","🌧️"],
+  71:["Hafif kar","🌨️"],73:["Kar","🌨️"],75:["Yoğun kar","❄️"],
+  77:["Kar taneleri","🌨️"],80:["Hafif sağanak","🌦️"],
+  81:["Sağanak","🌧️"],82:["Kuvvetli sağanak","⛈️"],
+  85:["Kar sağanağı","🌨️"],86:["Yoğun kar sağanağı","❄️"],
+  95:["Gök gürültülü fırtına","⛈️"],
+  96:["Dolu ihtimalli fırtına","⛈️"],99:["Kuvvetli dolulu fırtına","⛈️"]
+};
+
+function info(code) {
+  return codes[code] || ["Bilinmeyen durum","🌡️"];
+}
+
+function errorMessage(message) {
+  $("error").textContent = message;
+  $("error").classList.add("show");
+}
+function clearError() {
+  $("error").textContent = "";
+  $("error").classList.remove("show");
+}
+function busy(value) {
+  $("searchBtn").disabled = value;
+  $("gps").disabled = value;
+}
+
+async function jsonRequest(url) {
+  const response = await fetch(url, {cache:"no-store"});
+  if (!response.ok) throw new Error("Sunucu hatası: " + response.status);
+  return response.json();
+}
+
+function dateLabel(value) {
+  const [y,m,d] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat("tr-TR", {
+    weekday:"short", day:"numeric", month:"short"
+  }).format(new Date(y,m-1,d));
+}
+
+function render(data, offline = false) {
+  const c = data.weather.current;
+  const d = data.weather.daily;
+  const [desc, icon] = info(c.weather_code);
+
+  $("place").textContent = data.place;
+  $("localTime").textContent = "Yerel saat: " + c.time.replace("T"," ");
+  $("weatherIcon").textContent = icon;
+  $("temperature").textContent = Math.round(c.temperature_2m) + "°C";
+  $("description").textContent = desc;
+  $("feels").textContent = "Hissedilen sıcaklık: " +
+    Math.round(c.apparent_temperature) + "°C";
+  $("humidity").textContent = Math.round(c.relative_humidity_2m) + "%";
+  $("wind").textContent = Math.round(c.wind_speed_10m) + " km/sa";
+
+  const list = $("forecast");
+  list.replaceChildren();
+
+  d.time.forEach((date,i) => {
+    const [description, symbol] = info(d.weather_code[i]);
+    const row = document.createElement("div");
+    row.className = "day";
+
+    const detail = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "day-name";
+    name.textContent = i === 0 ? "Bugün" : dateLabel(date);
+
+    const text = document.createElement("div");
+    text.className = "day-desc";
+    text.textContent = description;
+    detail.append(name,text);
+
+    const iconEl = document.createElement("div");
+    iconEl.className = "day-icon";
+    iconEl.textContent = symbol;
+
+    const temps = document.createElement("div");
+    temps.className = "temps";
+    temps.textContent = Math.round(d.temperature_2m_max[i]) + "°";
+
+    const min = document.createElement("span");
+    min.className = "min";
+    min.textContent = Math.round(d.temperature_2m_min[i]) + "°";
+    temps.appendChild(min);
+
+    row.append(detail,iconEl,temps);
+    list.appendChild(row);
+  });
+
+  $("weather").classList.remove("hidden");
+  $("updated").textContent = offline
+    ? "Son başarılı güncelleme: " + new Date(data.fetchedAt).toLocaleString("tr-TR") + " (kayıtlı veri)"
+    : "Son güncelleme: " + new Date(data.fetchedAt).toLocaleString("tr-TR");
+
+  $("offline").classList.toggle("show", offline || !navigator.onLine);
+}
+
+function showSaved() {
+  try {
+    const data = JSON.parse(localStorage.getItem(CACHE));
+    if (!data || !data.weather || !data.weather.current) return false;
+    render(data,true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getWeather(place, lat, lon) {
+  const id = ++requestNumber;
+  clearError();
+
+  if (!navigator.onLine) {
+    $("offline").classList.add("show");
+    if (!showSaved()) errorMessage("İnternet yok ve kayıtlı hava durumu bulunamadı.");
+    return;
+  }
+
+  busy(true);
+
+  try {
+    const params = new URLSearchParams({
+      latitude:String(lat),
+      longitude:String(lon),
+      current:"temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m",
+      daily:"weather_code,temperature_2m_max,temperature_2m_min",
+      temperature_unit:"celsius",
+      wind_speed_unit:"kmh",
+      timezone:"auto",
+      forecast_days:"7"
+    });
+
+    const weather = await jsonRequest(
+      "https://api.open-meteo.com/v1/forecast?" + params
+    );
+
+    if (id !== requestNumber) return;
+    if (!weather.current || !weather.daily ||
+        !weather.daily.time || weather.daily.time.length < 5) {
+      throw new Error("Tahmin verisi eksik.");
+    }
+
+    const data = {place,weather,fetchedAt:new Date().toISOString()};
+    localStorage.setItem(CACHE,JSON.stringify(data));
+    render(data,false);
+    clearError();
+  } catch (e) {
+    if (id !== requestNumber) return;
+    showSaved();
+    errorMessage(navigator.onLine
+      ? "Hava durumu alınamadı. İnternetinizi kontrol edip tekrar deneyin."
+      : "İnternet bağlantısı kesildi. Gösterilen kayıtlı veri güncel olmayabilir.");
+  } finally {
+    if (id === requestNumber) busy(false);
+  }
+}
+
+async function searchCity(name) {
+  name = name.trim();
+  if (name.length < 2) {
+    errorMessage("En az 2 karakterli bir şehir adı girin.");
+    return;
+  }
+  if (!navigator.onLine) {
+    $("offline").classList.add("show");
+    errorMessage("Şehir aramak için internet bağlantısı gerekiyor.");
+    return;
+  }
+
+  clearError();
+  $("results").replaceChildren();
+  busy(true);
+
+  try {
+    const params = new URLSearchParams({
+      name, count:"10", language:"tr", format:"json"
+    });
+    const result = await jsonRequest(
+      "https://geocoding-api.open-meteo.com/v1/search?" + params
+    );
+    const cities = result.results || [];
+
+    if (!cities.length) {
+      errorMessage("Şehir bulunamadı. İsmi kontrol edip tekrar deneyin.");
+      return;
+    }
+
+    cities.forEach(city => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary city-result";
+
+      const title = document.createElement("strong");
+      title.textContent = city.name;
+
+      const extra = document.createElement("span");
+      extra.textContent = [city.admin1,city.country].filter(Boolean).join(", ");
+      button.append(title,extra);
+
+      button.addEventListener("click",() => {
+        $("city").value = city.name;
+        $("results").replaceChildren();
+        getWeather(
+          [city.name,city.admin1,city.country].filter(Boolean).join(", "),
+          city.latitude,city.longitude
+        );
+      });
+
+      $("results").appendChild(button);
+    });
+  } catch (e) {
+    errorMessage("Şehir araması yapılamadı. Bağlantınızı kontrol edin.");
+  } finally {
+    busy(false);
+  }
+}
+
+$("searchForm").addEventListener("submit",event => {
+  event.preventDefault();
+  searchCity($("city").value);
+});
+
+$("gps").addEventListener("click",() => {
+  clearError();
+
+  if (!navigator.geolocation) {
+    errorMessage("Tarayıcı konum özelliğini desteklemiyor.");
+    return;
+  }
+  if (!navigator.onLine) {
+    $("offline").classList.add("show");
+    errorMessage("Konum hava durumu için internet bağlantısı gerekir.");
+    return;
+  }
+
+  busy(true);
+  navigator.geolocation.getCurrentPosition(
+    pos => getWeather("Bulunduğum konum",
+      pos.coords.latitude,pos.coords.longitude),
+    err => {
+      busy(false);
+      errorMessage(err.code === 1
+        ? "Konum izni verilmedi. Tarayıcı ayarlarından izin verin."
+        : err.code === 2
+        ? "Konum belirlenemedi. GPS ayarlarını kontrol edin."
+        : "Konum isteği zaman aşımına uğradı.");
+    },
+    {enableHighAccuracy:false,timeout:15000,maximumAge:300000}
+  );
+});
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  $("theme").textContent = theme === "dark" ? "☀️" : "🌙";
+  try { localStorage.setItem("weather-theme",theme); } catch {}
+}
+let theme = "light";
+try {
+  theme = localStorage.getItem("weather-theme") ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+} catch {}
+setTheme(theme);
+
+$("theme").addEventListener("click",() => {
+  setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+});
+
+function connectionChanged() {
+  const offline = !navigator.onLine;
+  $("offline").classList.toggle("show",offline);
+  if (offline) {
+    errorMessage("İnternet bağlantısı yok. Yeni hava tahmini alınamaz.");
+  } else {
+    clearError();
+  }
+}
+window.addEventListener("online",connectionChanged);
+window.addEventListener("offline",connectionChanged);
+
+window.addEventListener("beforeinstallprompt",event => {
+  event.preventDefault();
+  installEvent = event;
+  $("install").classList.remove("hidden");
+});
+$("install").addEventListener("click",async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice;
+  installEvent = null;
+  $("install").classList.add("hidden");
+});
+
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("./sw.js").catch(console.error);
+}
+
+if (!navigator.onLine) {
+  $("offline").classList.add("show");
+  if (!showSaved()) errorMessage("Çevrimdışısınız. İnternete bağlanın.");
+} else {
+  searchCity("İstanbul");
+}
+connectionChanged();
+</script>
+</body>
+</html>
